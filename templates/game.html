@@ -1,0 +1,154 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<style>
+    html, body{
+        margin: 0;
+        width: 100%;
+        height: 100%;
+    }
+
+    body {
+        background: linear-gradient(
+            135deg,
+            #571370 0%,
+            #ff8800 100%
+            );
+        min-height: 100vh;
+        margin: 0;
+    }
+
+    #fullscreen{
+        position: fixed;
+        inset: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-direction: column;
+    }
+
+    #sheet {
+        background-color: white;
+        padding: 20px;
+        transform: translateY(1000%);
+        transition: transform 1s ease-in-out;
+        /* font-family: MyCursive, cursive; */
+        background-image: url("{{url_for('static', filename='images/paper.jpg') }}");
+        padding-bottom: 30px;
+    }
+
+    #sheet.show {
+        transform: translateX(0) scale(2);
+    }
+
+</style>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Game</title>
+</head>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<body>
+    <div id="fullscreen">
+        <div id="sheet">
+            <h1 id="">Hidden in Rivercove</h1>
+            <div id="team">Team: </div>
+            <div id="hint">Your hint is: </div>
+            <div id="reader"></div>
+            <div id="result" role="status">
+                Point your camera at a QR code.
+            </div>
+        </div>
+    </div>
+</body>
+
+<script>
+    window.addEventListener("load", () => {
+        document.getElementById("sheet").classList.add("show");
+        fetch("/api/get_initial_data", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                content:{
+                    user_id: localStorage.getItem("user_id")
+                }
+            })
+        }).then((response) => {
+            return response.json();
+        }).then((data) => {
+            let user_info = data.user_info;
+            document.getElementById("team").innerText = "Team: " + user_info.team_name;
+            document.getElementById("hint").innerText = "Your hint is: " + user_info.hint;
+        });
+    });
+
+    let processing = false;
+    const resultElement = document.getElementById("result");
+
+    async function onScanSuccess(decodedText) {
+            // Prevent duplicate requests while processing a scan.
+            if (processing) return;
+            processing = true;
+
+            resultElement.textContent = "QR code detected. Processing...";
+
+            try {
+                // await scanner.stop();
+                console.log(decodedText);
+
+                const response = await fetch("/api/submit_scan", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        content: {
+                            user_id: localStorage.getItem("user_id"),
+                            decodedtext: decodedText
+                        }
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || "Scan failed");
+                }
+                console.log(data);
+                resultElement.textContent = data.content.message;
+
+                setTimeout(() => {
+                    processing = false;
+                }, 2000);
+
+            } catch (error) {
+                resultElement.textContent =
+                    "Error: " + error.message;
+            }
+        }
+
+    async function startScanner() {
+        scanner = new Html5Qrcode("reader");
+
+        try {
+            await scanner.start(
+                { facingMode: "environment" },
+                {
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 }
+                },
+                onScanSuccess,
+                () => {}
+            );
+        } catch (error) {
+            console.log("Error starting camera: " + error);
+        }
+    }
+
+    startScanner();
+</script>
